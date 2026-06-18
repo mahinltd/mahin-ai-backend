@@ -23,6 +23,9 @@
 12. [Error Handling](#error-handling)
 13. [Frontend Integration Guide](#frontend-integration-guide)
 14. [Phase 1-3 Feature Expansion Matrix](#phase-1-3-feature-expansion-matrix)
+15. [Password Recovery](#password-recovery)
+16. [Payment History](#payment-history)
+17. [Public Config API](#public-config-api)
 
 ---
 
@@ -257,6 +260,39 @@ All endpoints return JSON with this structure:
   │  │  - Conversation Model (Chat History)            │  │
 
 ### Base Path: `/api/v1/auth`
+
+#### Password Recovery
+```
+POST /forgot-password
+POST /reset-password
+```
+
+**Forgot Password Request Body:**
+```json
+{
+  "email": "john@example.com"
+}
+```
+
+**Reset Password Request Body:**
+```json
+{
+  "email": "john@example.com",
+  "token": "reset_token_from_email_link",
+  "newPassword": "NewStrongPass@123"
+}
+```
+
+**Workflow:**
+1. User submits email to `/auth/forgot-password`
+2. If the account exists and is a local account, backend sends a time-limited reset link by email
+3. User opens the link and submits the token plus new password to `/auth/reset-password`
+4. Backend validates the token, hashes the new password, clears the reset token, and confirms success
+
+**Security Notes:**
+- Reset tokens are hashed before storage
+- Tokens expire after 1 hour
+- Google-auth accounts do not use password reset because they do not have local passwords
 
 #### 1️⃣ Sign Up (Email & Password)
 ```
@@ -695,6 +731,49 @@ Content-Type: application/json
 
 ### Base Path: `/api/v1/payment`
 
+#### Payment History
+```
+GET /history
+```
+
+**Headers:**
+```
+Authorization: Bearer {JWT_TOKEN}
+```
+
+**Optional Query Params:** `page`, `limit`
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 2,
+  "payments": [
+    {
+      "gateway": "paypal",
+      "amount": 5,
+      "currency": "USD",
+      "transactionId": "CAPTURE_ID_123",
+      "paypalOrderId": "ORDER_ID_456",
+      "senderNumber": "",
+      "status": "approved",
+      "createdAt": "2026-06-18T00:00:00.000Z",
+      "updatedAt": "2026-06-18T00:00:00.000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 2,
+    "totalPages": 1
+  }
+}
+```
+
+**Use Case:**
+- Lets users review all of their own BDT and USD payment records from one place
+- Useful for subscription support, billing disputes, and plan verification
+
 #### Submit Manual Payment (BKash, Nagad, Rocket)
 ```
 POST /manual-submit
@@ -783,6 +862,41 @@ Content-Type: application/json
 **Automatic Approval:** PayPal payments auto-approve (no manual review needed)
 
 **Security:** Server-side verification prevents fraud
+
+---
+
+## 🌐 Public Config API
+
+### Base Path: `/api/v1/config`
+
+#### Get Public Config
+```
+GET /public
+```
+
+**Authentication Required:** No
+
+**Purpose:**
+- Exposes pricing and live config values to the frontend without requiring login
+- Allows the public landing page to render plan cards and feature flags before authentication
+
+**Response:**
+```json
+{
+  "success": true,
+  "config": {
+    "modelNameLight": "MahinAi-Light",
+    "modelNamePro": "MahinAi-Pro",
+    "modelNameMax": "MahinAi-Max",
+    "priceBDT": 299,
+    "priceUSD": 5,
+    "isProModelActive": true,
+    "isMaxModelActive": true,
+    "privacyPolicy": "# Privacy Policy\nWelcome to Mahin AI.",
+    "termsConditions": "# Terms and Conditions\nUsage rules of Mahin AI."
+  }
+}
+```
 
 ---
 
