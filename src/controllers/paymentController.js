@@ -17,6 +17,16 @@ const isSafePhoneNumber = (value) => typeof value === 'string' && /^\+?[0-9]{7,2
 
 const isSafePayPalOrderId = (value) => typeof value === 'string' && /^[A-Za-z0-9-]{5,128}$/.test(value.trim());
 
+const getPagination = (query) => {
+    const pageValue = Number.parseInt(query?.page, 10);
+    const limitValue = Number.parseInt(query?.limit, 10);
+    const page = Number.isInteger(pageValue) && pageValue > 0 ? pageValue : 1;
+    const limit = Number.isInteger(limitValue) && limitValue > 0 ? Math.min(limitValue, 100) : 20;
+    const skip = (page - 1) * limit;
+
+    return { page, limit, skip };
+};
+
 const getPayPalBaseUrl = () => {
     const mode = String(process.env.PAYPAL_ENV || process.env.PAYPAL_MODE || 'sandbox').toLowerCase();
     return mode === 'live' || mode === 'production'
@@ -234,4 +244,35 @@ const paypalSuccessHandler = async (req, res) => {
     }
 };
 
-module.exports = { submitManualPayment, paypalSuccessHandler };
+const getPaymentHistory = async (req, res) => {
+    try {
+        const { page, limit, skip } = getPagination(req.query);
+
+        const [payments, total] = await Promise.all([
+            Payment.find({ userId: req.user._id })
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .select('gateway amount currency transactionId paypalOrderId senderNumber status createdAt updatedAt')
+                .lean(),
+            Payment.countDocuments({ userId: req.user._id })
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            count: payments.length,
+            payments,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.max(1, Math.ceil(total / limit))
+            }
+        });
+    } catch (error) {
+        logger.error('Payment history error', { error: error.message });
+        return res.status(500).json({ success: false, message: 'Failed to fetch payment history.' });
+    }
+};
+
+module.exports = { submitManualPayment, paypalSuccessHandler, getPaymentHistory };

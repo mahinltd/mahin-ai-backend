@@ -6,7 +6,9 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const logger = require('../utils/logger');
+const sendEmail = require('../utils/sendEmail');
 const { isDuplicateKeyError } = require('../utils/security');
 
 const isValidEmail = (value) => typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
@@ -24,6 +26,13 @@ const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, {
         expiresIn: '30d',
     });
+};
+
+const hashResetToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
+const buildPasswordResetUrl = (token, email) => {
+    const baseUrl = String(process.env.CLIENT_URL || process.env.API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+    return `${baseUrl}/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
 };
 
 /**
@@ -247,4 +256,78 @@ const googleAuth = async (req, res) => {
     }
 };
 
-module.exports = { registerUser, loginUser, googleAuth };
+const forgotPassword = async (req, res) => {
+    try {
+        const email = isValidEmail(req.body?.email) ? req.body.email.trim().toLowerCase() : '';
+
+        if (!email) {
+            return res.status(400).json({ success: false, message: 'Please provide a valid email address.' });
+        }
+
+        const user = await User.findOne({ email });
+
+        if (user && user.authProvider === 'local') {
+            const resetToken = crypto.randomBytes(32).toString('hex');
+            user.passwordResetTokenHash = hashResetToken(resetToken);
+            user.passwordResetTokenExpires = new Date(Date.now() + 60 * 60 * 1000);
+            await user.save();
+
+            const resetUrl = buildPasswordResetUrl(resetToken, email);
+            const html = `
+                <h2>Reset your Mahin AI password</h2>
+                <p>We received a request to reset the password for <strong>${email}</strong>.</p>
+                <p>Use this link within 1 hour:</p>
+                <p><a href="${resetUrl}">${resetUrl}</a></p>
+                <p>If you did not request this, you can ignore this email.</p>
+            `;
+
+            await sendEmail(user.email, 'Reset your Mahin AI password', html);
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'If the account exists, a password reset link has been sent.'
+        });
+    } catch (error) {
+        logger.error('Forgot password error', { error: error.message });
+        return res.status(500).json({ success: false, message: 'Password reset request failed.' });
+    }
+};
+
+const resetPassword = async (req, res) => {
+    try {
+        const email = isValidEmail(req.body?.email) ? req.body.email.trim().toLowerCase() : '';
+        const resetToken = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+        const newPassword = req.body?.newPassword;
+
+        if (!email || !resetToken || !isStrongPassword(newPassword)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide a valid email, token, and strong new password.'
+            });
+        }
+
+        const user = await User.findOne({
+            email,
+            passwordResetTokenHash: hashResetToken(resetToken),
+            passwordResetTokenExpires: { $gt: new Date() }
+        });
+
+        if (!user) {
+            return res.status(400).json({ success: false, message: 'Invalid or expired reset token.' });
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        user.passwordHash = await bcrypt.hash(newPassword, salt);
+        user.passwordResetTokenHash = '';
+        user.passwordResetTokenExpires = null;
+        await user.save();
+
+        return res.status(200).json({ success: true, message: 'Password has been reset successfully.' });
+    } catch (error) {
+        logger.error('Reset password error', { error: error.message });
+        return res.status(500).json({ success: false, message: 'Password reset failed.' });
+    }
+};
+
+module.exports = { registerUser, loginUser, googleAuth, forgotPassword, resetPassword };

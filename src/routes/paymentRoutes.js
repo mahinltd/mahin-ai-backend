@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
-const { submitManualPayment, paypalSuccessHandler } = require('../controllers/paymentController');
+const { submitManualPayment, paypalSuccessHandler, getPaymentHistory } = require('../controllers/paymentController');
 const { protect } = require('../middleware/authMiddleware'); // জেডব্লিউটি রুট প্রোটেক্টর
 
 const paymentLimiter = rateLimit({
@@ -23,5 +23,6 @@ const paymentLimiter = rateLimit({
 // দুটি রাউটই সম্পূর্ণ লকড, ইউজারকে অবশ্যই লগইন থাকতে হবে পেমেন্ট সাবমিট করতে
 router.post('/manual-submit', paymentLimiter, protect, submitManualPayment);
 router.post('/paypal-success', paymentLimiter, protect, paypalSuccessHandler);
+router.get('/history', protect, getPaymentHistory);
 
 module.exports = router;

@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
-const { registerUser, loginUser, googleAuth } = require('../controllers/authController');
+const { registerUser, loginUser, googleAuth, forgotPassword, resetPassword } = require('../controllers/authController');
 const tracker = require('../middleware/tracker'); // আমাদের ট্র্যাকিং মডিউল
 
 const authLimiter = rateLimit({
@@ -25,5 +25,7 @@ const authLimiter = rateLimit({
 router.post('/signup', authLimiter, tracker, registerUser);
 router.post('/login', authLimiter, tracker, loginUser);
 router.post('/google', authLimiter, tracker, googleAuth);
+router.post('/forgot-password', authLimiter, forgotPassword);
+router.post('/reset-password', authLimiter, resetPassword);
 
 module.exports = router;

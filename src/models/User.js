@@ -32,6 +32,14 @@ const userSchema = new mongoose.Schema({
             return this.authProvider === 'local';
         }
     },
+    passwordResetTokenHash: {
+        type: String,
+        default: ''
+    },
+    passwordResetTokenExpires: {
+        type: Date,
+        default: null
+    },
     currentPlan: {
         type: String,
         enum: ['free', 'pro', 'max'],

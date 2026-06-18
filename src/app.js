@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const authRoutes = require('./routes/authRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const configRoutes = require('./routes/configRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const conversationRoutes = require('./routes/conversationRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -39,6 +40,7 @@ const createApp = () => {
     app.use('/api/v1/auth', authRoutes);
     app.use('/api/v1/ai', aiRoutes);
     app.use('/api/v1/payment', paymentRoutes);
+    app.use('/api/v1/config', configRoutes);
     app.use('/api/v1/admin', adminRoutes);
     app.use('/api/v1/conversations', conversationRoutes);
     app.use('/api/v1/user', userRoutes);
