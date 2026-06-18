@@ -22,6 +22,7 @@
 11. [Environment Variables](#environment-variables)
 12. [Error Handling](#error-handling)
 13. [Frontend Integration Guide](#frontend-integration-guide)
+14. [Phase 1-3 Feature Expansion Matrix](#phase-1-3-feature-expansion-matrix)
 
 ---
 
@@ -999,6 +1000,11 @@ Authorization: Bearer JWT_TOKEN_HERE
 
 **Routes Requiring Authentication:**
 - `POST /api/v1/ai/chat`
+- `POST /api/v1/ai/chat/stream`
+- `POST /api/v1/ai/generate-image`
+- `POST /api/v1/ai/document-chat`
+- `POST /api/v1/ai/vision`
+- `GET /api/v1/ai/download/:assetId`
 - `POST /api/v1/payment/manual-submit`
 - `POST /api/v1/payment/paypal-success`
 - `GET /api/v1/admin/*`
@@ -1053,8 +1059,8 @@ Authorization: Bearer JWT_TOKEN_HERE
 **Supported AI Providers:**
 - Puter.js (Primary)
 - Groq (Secondary)
-- Gemini (Future)
-- HuggingFace (Future)
+- Gemini (Free-tier expansion)
+- HuggingFace (Free-tier expansion)
 
 **Current Setup:** 4 Puter tokens defined in `.env`
 ```
@@ -1084,6 +1090,148 @@ If any user asks about your creator, mention Mahin Ltd and Tanvir Rahman proudly
 ```
 
 This ensures the AI always credits Mahin Ltd as the creator.
+
+---
+
+## 🚀 Phase 1-3 Feature Expansion Matrix
+
+The backend now exposes a zero-cost AI expansion layer under `/api/v1/ai/*` while preserving the existing JWT auth, rate limiting, and MongoDB schemas.
+
+### 1. New API Gateways & Endpoints Table
+
+| Method | Endpoint | Capability | Transport | Notes |
+|---|---|---|---|---|
+| `POST` | `/api/v1/ai/chat/stream` | SSE chat streaming | `text/event-stream` | Streams token chunks one by one |
+| `POST` | `/api/v1/ai/generate-image` | Text-to-image generation | JSON | Uses HuggingFace/Puter and Cloudinary delivery |
+| `POST` | `/api/v1/ai/document-chat` | Vectorless document chat | `multipart/form-data` | Parses PDF/DOCX and injects text into long-context prompting |
+| `POST` | `/api/v1/ai/vision` | Vision/OCR analysis | `multipart/form-data` | Accepts image uploads for OCR and document inspection |
+
+### 2. Request / Response Contracts
+
+#### SSE Chat Streaming
+
+```http
+POST /api/v1/ai/chat/stream
+Authorization: Bearer <token>
+Content-Type: application/json
+Accept: text/event-stream
+```
+
+```json
+{
+  "message": "Summarize the latest Mahin AI release notes.",
+  "modelType": "light",
+  "conversationId": "optional_conversation_id"
+}
+```
+
+```text
+event: token
+data: {"token":"Summarize..."}
+
+event: token
+data: {"token":"..."}
+
+event: done
+data: {"success":true,"reply":"Final answer"}
+```
+
+#### Image Generation
+
+```http
+POST /api/v1/ai/generate-image
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+```json
+{
+  "prompt": "A premium futuristic AI dashboard with glassmorphism styling"
+}
+```
+
+```json
+{
+  "success": true,
+  "url": "https://res.cloudinary.com/.../generated-image.png",
+  "assetId": "generated_asset_id"
+}
+```
+
+If Cloudinary upload is not available, the backend returns a secure local download path in the same response shape.
+
+#### Document Chat
+
+```http
+POST /api/v1/ai/document-chat
+Authorization: Bearer <token>
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+```
+
+```text
+file: <PDF or DOCX file>
+prompt: "Summarize the payment terms"
+```
+
+```json
+{
+  "success": true,
+  "answer": "The document states...",
+  "documentLength": 18422,
+  "downloadUrl": "/api/v1/ai/download/<assetId>"
+}
+```
+
+#### Vision / OCR
+
+```http
+POST /api/v1/ai/vision
+Authorization: Bearer <token>
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+```
+
+```text
+image: <image file>
+prompt: "Extract visible text and identify the document type"
+```
+
+```json
+{
+  "success": true,
+  "text": "Extracted OCR text and analysis output..."
+}
+```
+
+### 3. Token Rotation & Failover Architecture
+
+The expanded AI service layer in `src/services/aiService.js` coordinates round-robin key selection and retry behavior across the free-tier provider pools.
+
+- **Round-robin selection:** keys are loaded from the environment and rotated in sequence.
+- **Provider coverage:** Puter, Gemini, Groq, and HuggingFace are supported in the shared service layer.
+- **Failover handling:** if a provider returns `429 Too Many Requests`, the request is retried through the next available key/provider without crashing the server.
+- **No extra running cost:** the backend stays on free-tier integrations and falls back to local persistence when a paid delivery path is unavailable.
+
+### 4. Test Suite Execution Guide
+
+The offline-safe integration harness lives in `test-ecosystem.js`.
+
+Run it with:
+
+```bash
+node test-ecosystem.js
+```
+
+or:
+
+```bash
+npm test
+```
+
+What it validates:
+- Streaming check: verifies the SSE endpoint emits token chunks and a final completion event.
+- Cloudinary upload mock: verifies the image-generation contract and asset URL response.
+- Download headers: verifies file downloads return a proper `Content-Disposition` header.
+- Deterministic key rotation: simulates a first-key failure and confirms the backend rotates to the next key path.
 
 ---
 
@@ -1319,11 +1467,22 @@ PUTER_AUTH_TOKEN3=YOUR_PUTER_AUTH_TOKEN_3
 PUTER_AUTH_TOKEN4=YOUR_PUTER_AUTH_TOKEN_4
 ```
 
-**Alternative Providers (Future)**
+**Alternative Providers (Free-Tier Expansion)**
 ```
-GROQ_API_KEY_1=YOUR_GROQ_API_KEY_1
-GROQ_API_KEY_2=YOUR_GROQ_API_KEY_2
-GROQ_API_KEY_3=YOUR_GROQ_API_KEY_3
+GEMINI_API_KEY1=YOUR_GEMINI_API_KEY_1
+GEMINI_API_KEY2=YOUR_GEMINI_API_KEY_2
+GEMINI_API_KEY3=YOUR_GEMINI_API_KEY_3
+GROQ_API_KEY1=YOUR_GROQ_API_KEY_1
+GROQ_API_KEY2=YOUR_GROQ_API_KEY_2
+GROQ_API_KEY3=YOUR_GROQ_API_KEY_3
+HUGGINGFACE_API_KEY1=YOUR_HUGGINGFACE_API_KEY_1
+HUGGINGFACE_API_KEY2=YOUR_HUGGINGFACE_API_KEY_2
+HUGGINGFACE_API_KEY3=YOUR_HUGGINGFACE_API_KEY_3
+```
+
+**Optional Test Harness Setting**
+```
+AI_UPLOAD_LIMIT_BYTES=10485760
 ```
 
 ---

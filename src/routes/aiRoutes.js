@@ -4,12 +4,32 @@
  */
 
 const express = require('express');
+const multer = require('multer');
 const router = express.Router();
-const { generateChatResponse } = require('../controllers/aiController');
-const { protect } = require('../middleware/authMiddleware'); // জেডব্লিউটি ভেরিফায়ার
-const chatRateLimiter = require('../middleware/rateLimiter'); // স্প্যাম প্রোটেক্টর
+const {
+	generateChatResponse,
+	generateChatStream,
+	generateImageResponse,
+	generateVisionResponse,
+	generateDocumentChat,
+	getDownloadAssetHandler
+} = require('../controllers/aiController');
+const { protect } = require('../middleware/authMiddleware');
+const chatRateLimiter = require('../middleware/rateLimiter');
 
-// এআই চ্যাট রাউট অ্যাক্টিভেশন: প্রথমে স্প্যাম রেট লিমিট হবে, তারপর লগইন টোকেন ভেরিফাই হবে, তারপর চ্যাট জেনারেট হবে
+const upload = multer({
+	storage: multer.memoryStorage(),
+	limits: {
+		fileSize: Number(process.env.AI_UPLOAD_LIMIT_BYTES || 10 * 1024 * 1024)
+	}
+});
+
 router.post('/chat', chatRateLimiter, protect, generateChatResponse);
+router.post('/chat/stream', chatRateLimiter, protect, generateChatStream);
+router.post('/chat/sse', chatRateLimiter, protect, generateChatStream);
+router.post('/generate-image', chatRateLimiter, protect, generateImageResponse);
+router.post('/vision', chatRateLimiter, protect, upload.single('image'), generateVisionResponse);
+router.post('/document-chat', chatRateLimiter, protect, upload.single('file'), generateDocumentChat);
+router.get('/download/:assetId', protect, getDownloadAssetHandler);
 
 module.exports = router;
