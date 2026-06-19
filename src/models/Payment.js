@@ -35,6 +35,11 @@ const paymentSchema = new mongoose.Schema({
         type: String, // বিকাশ/নগদ ম্যানুয়াল পেমেন্টের ক্ষেত্রে প্রযোজ্য
         default: ''
     },
+    plan: {
+        type: String,
+        enum: ['pro', 'max'],
+        default: 'pro'
+    },
     status: {
         type: String,
         enum: ['pending', 'approved', 'rejected'],

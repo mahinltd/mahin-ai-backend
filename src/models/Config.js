@@ -13,6 +13,8 @@ const configSchema = new mongoose.Schema({
     // ডাইনামিক প্রাইসিং আপডেট
     priceBDT: { type: Number, default: 299 },
     priceUSD: { type: Number, default: 5 },
+    priceMaxBDT: { type: Number, default: 599 },
+    priceMaxUSD: { type: Number, default: 10 },
     
     // ডাইনামিক সিএমএস পেজ (Markdown টেক্সট সেভ থাকবে)
     privacyPolicy: { type: String, default: '# Privacy Policy\nWelcome to Mahin AI.' },

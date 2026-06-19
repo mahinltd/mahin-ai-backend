@@ -4,7 +4,7 @@ const logger = require('../utils/logger');
 const getPublicConfig = async (req, res) => {
     try {
         let config = await Config.findOne()
-            .select('modelNameLight modelNamePro modelNameMax priceBDT priceUSD isProModelActive isMaxModelActive privacyPolicy termsConditions')
+            .select('modelNameLight modelNamePro modelNameMax priceBDT priceUSD priceMaxBDT priceMaxUSD isProModelActive isMaxModelActive privacyPolicy termsConditions')
             .lean();
 
         if (!config) {
@@ -19,6 +19,8 @@ const getPublicConfig = async (req, res) => {
                 modelNameMax: config.modelNameMax,
                 priceBDT: config.priceBDT,
                 priceUSD: config.priceUSD,
+                priceMaxBDT: config.priceMaxBDT,
+                priceMaxUSD: config.priceMaxUSD,
                 isProModelActive: config.isProModelActive,
                 isMaxModelActive: config.isMaxModelActive,
                 privacyPolicy: config.privacyPolicy,

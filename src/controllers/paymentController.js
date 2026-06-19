@@ -17,6 +17,8 @@ const isSafePhoneNumber = (value) => typeof value === 'string' && /^\+?[0-9]{7,2
 
 const isSafePayPalOrderId = (value) => typeof value === 'string' && /^[A-Za-z0-9-]{5,128}$/.test(value.trim());
 
+const isValidPlan = (value) => ['pro', 'max'].includes(String(value || '').trim().toLowerCase());
+
 const getPagination = (query) => {
     const pageValue = Number.parseInt(query?.page, 10);
     const limitValue = Number.parseInt(query?.limit, 10);
@@ -25,6 +27,21 @@ const getPagination = (query) => {
     const skip = (page - 1) * limit;
 
     return { page, limit, skip };
+};
+
+const getPlanPricing = (systemConfig, plan, currency) => {
+    const normalizedPlan = String(plan || 'pro').trim().toLowerCase();
+    const normalizedCurrency = String(currency || '').toUpperCase();
+
+    if (normalizedPlan === 'max') {
+        return normalizedCurrency === 'USD'
+            ? Number(systemConfig?.priceMaxUSD || 10)
+            : Number(systemConfig?.priceMaxBDT || 599);
+    }
+
+    return normalizedCurrency === 'USD'
+        ? Number(systemConfig?.priceUSD || 5)
+        : Number(systemConfig?.priceBDT || 299);
 };
 
 const getPayPalBaseUrl = () => {
@@ -81,12 +98,16 @@ const verifyPayPalOrder = async (orderId) => {
  */
 const submitManualPayment = async (req, res) => {
     try {
-        const { gateway, transactionId, senderNumber } = req.body;
+        const { gateway, transactionId, senderNumber, plan } = req.body;
         const userId = req.user._id;
+        const normalizedPlan = String(plan || 'pro').trim().toLowerCase();
 
         // ১. ইনপুট ভ্যালিডেশন
         if (!['bkash', 'nagad', 'rocket', 'paypal'].includes(gateway) || !isSafeTransactionId(transactionId)) {
             return res.status(400).json({ success: false, message: 'Gateway and Transaction ID are required.' });
+        }
+        if (!isValidPlan(normalizedPlan)) {
+            return res.status(400).json({ success: false, message: 'Invalid plan selection. Use pro or max.' });
         }
         if (senderNumber && !isSafePhoneNumber(senderNumber)) {
             return res.status(400).json({ success: false, message: 'Please provide a valid sender number.' });
@@ -94,7 +115,7 @@ const submitManualPayment = async (req, res) => {
 
         // ২. লাইভ ডাটাবেজ থেকে বর্তমান BDT প্রাইস রিড করা (Default: 299)
         const systemConfig = await Config.findOne();
-        const currentAmount = systemConfig ? systemConfig.priceBDT : 299;
+        const currentAmount = getPlanPricing(systemConfig, normalizedPlan, 'BDT');
 
         // ৩. অ্যান্টি-ফ্রড চেক (Anti-Fraud Check): একই TrxID ডাটাবেজে অলরেডি আছে কি না চেক
         const trxExists = await Payment.findOne({ transactionId: transactionId.trim() });
@@ -113,6 +134,7 @@ const submitManualPayment = async (req, res) => {
             currency: 'BDT',
             transactionId: transactionId.trim(),
             senderNumber: senderNumber || '',
+            plan: normalizedPlan,
             status: 'pending'
         });
 
@@ -123,6 +145,7 @@ const submitManualPayment = async (req, res) => {
             <p><strong>Method:</strong> ${escapeHtml(String(gateway).toUpperCase())}</p>
             <p><strong>Sender No:</strong> ${escapeHtml(senderNumber || 'N/A')}</p>
             <p><strong>TrxID:</strong> ${escapeHtml(transactionId)}</p>
+            <p><strong>Plan:</strong> ${escapeHtml(normalizedPlan.toUpperCase())}</p>
             <p><strong>Amount:</strong> ৳${currentAmount}</p>
             <p>Please review this transaction from your Admin Control Room to Approve the user.</p>
         `;
@@ -158,14 +181,19 @@ const submitManualPayment = async (req, res) => {
  */
 const paypalSuccessHandler = async (req, res) => {
     try {
-        const { orderId, transactionId } = req.body; // ফ্রন্টএন্ড পেপাল SDK সফল পেমেন্টের পর এই ডেটা দেবে
+        const { orderId, transactionId, plan } = req.body; // ফ্রন্টএন্ড পেপাল SDK সফল পেমেন্টের পর এই ডেটা দেবে
         const userId = req.user._id;
+        const normalizedPlan = String(plan || 'pro').trim().toLowerCase();
 
         const systemConfig = await Config.findOne();
-        const expectedUSD = systemConfig ? systemConfig.priceUSD : 5;
+        const expectedUSD = getPlanPricing(systemConfig, normalizedPlan, 'USD');
 
         if (!isSafePayPalOrderId(orderId)) {
             return res.status(400).json({ success: false, message: 'Invalid PayPal order data.' });
+        }
+
+        if (!isValidPlan(normalizedPlan)) {
+            return res.status(400).json({ success: false, message: 'Invalid plan selection. Use pro or max.' });
         }
 
         const paypalOrder = await verifyPayPalOrder(orderId.trim());
@@ -202,17 +230,18 @@ const paypalSuccessHandler = async (req, res) => {
             currency: 'USD',
             transactionId: verifiedTransactionId,
             paypalOrderId: orderId.trim(),
+            plan: normalizedPlan,
             status: 'approved'
         });
 
-        // ৩. ইউজারের Pro plan সরাসরি সক্রিয় করা কারণ পেমেন্ট সার্ভার-সাইডে যাচাই করা হয়েছে
-        await User.findByIdAndUpdate(userId, { currentPlan: 'pro' });
+        // ৩. ইউজারের নির্বাচিত plan সরাসরি সক্রিয় করা কারণ পেমেন্ট সার্ভার-সাইডে যাচাই করা হয়েছে
+        await User.findByIdAndUpdate(userId, { currentPlan: normalizedPlan });
 
         // ৪. ইউজার ও অ্যাডমিনকে নোটিফাই করা
         const userEmailHtml = `
             <h2>PayPal payment verified</h2>
             <p>Dear ${escapeHtml(req.user.name)}, your PayPal payment of $${verifiedAmount} has been verified successfully.</p>
-            <p>Your <strong>Mahin AI Pro</strong> subscription is now active.</p>
+            <p>Your <strong>Mahin AI ${escapeHtml(normalizedPlan.toUpperCase())}</strong> subscription is now active.</p>
         `;
         sendEmail(req.user.email, '⚡ Subscription Activated - Mahin AI', userEmailHtml);
 
@@ -222,7 +251,7 @@ const paypalSuccessHandler = async (req, res) => {
             <p><strong>Order ID:</strong> ${escapeHtml(orderId)}</p>
             <p><strong>Capture ID:</strong> ${escapeHtml(verifiedTransactionId)}</p>
             <p><strong>Amount:</strong> $${verifiedAmount}</p>
-            <p>The payment has been verified directly against PayPal and the user was upgraded to Pro.</p>
+            <p>The payment has been verified directly against PayPal and the user was upgraded to ${escapeHtml(normalizedPlan.toUpperCase())}.</p>
         `;
         sendEmail(process.env.ADMIN_EMAIL, '✅ PayPal Payment Verified - Mahin AI', adminEmailHtml);
 
@@ -253,7 +282,7 @@ const getPaymentHistory = async (req, res) => {
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
-                .select('gateway amount currency transactionId paypalOrderId senderNumber status createdAt updatedAt')
+                .select('gateway amount currency transactionId paypalOrderId senderNumber plan status createdAt updatedAt')
                 .lean(),
             Payment.countDocuments({ userId: req.user._id })
         ]);

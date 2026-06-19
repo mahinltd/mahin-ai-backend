@@ -32,6 +32,8 @@ const normalizeConfigUpdates = (updates = {}) => {
         'isMaxModelActive',
         'priceBDT',
         'priceUSD',
+        'priceMaxBDT',
+        'priceMaxUSD',
         'privacyPolicy',
         'termsConditions'
     ];
@@ -53,7 +55,7 @@ const normalizeConfigUpdates = (updates = {}) => {
             return;
         }
 
-        if (key === 'priceBDT' || key === 'priceUSD') {
+        if (key === 'priceBDT' || key === 'priceUSD' || key === 'priceMaxBDT' || key === 'priceMaxUSD') {
             const parsedValue = Number(value);
             if (Number.isFinite(parsedValue) && parsedValue >= 0) {
                 sanitized[key] = parsedValue;
@@ -217,15 +219,15 @@ const processPaymentAction = async (req, res) => {
         await payment.save();
 
         if (action === 'approved') {
-            // ইউজারের প্ল্যান আপগ্রেড করে 'pro' করা
-            await User.findByIdAndUpdate(payment.userId._id, { currentPlan: 'pro' });
+            // ইউজারের নির্বাচিত plan আপগ্রেড করা
+            await User.findByIdAndUpdate(payment.userId._id, { currentPlan: payment.plan === 'max' ? 'max' : 'pro' });
 
             // ইউজারকে প্রফেশনাল সাকসেস ইমেইল পাঠানো
             const successHtml = `
-                <h2>Payment Approved! Welcome to Mahin AI Pro</h2>
+                <h2>Payment Approved! Welcome to Mahin AI ${String(payment.plan || 'pro').toUpperCase()}</h2>
                 <p>Dear ${payment.userId.name},</p>
                 <p>We have verified your transaction (TrxID: <strong>${payment.transactionId}</strong>) via ${payment.gateway.toUpperCase()}.</p>
-                <p>Your subscription has been successfully upgraded to the <strong>Pro Plan</strong>.</p>
+                <p>Your subscription has been successfully upgraded to the <strong>${String(payment.plan || 'pro').toUpperCase()} Plan</strong>.</p>
                 <p>Enjoy elite access to all our advanced models without restrictions.</p>
                 <br>
                 <p>Best Regards,</p>
