@@ -180,16 +180,44 @@ const generateVisionResponse = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Please upload an image file.' });
         }
 
-        const text = await aiService.callGeminiRestWithRetry({
-            messages: [
-                { role: 'user', content: req.body?.prompt || 'Extract text and analyze the image.' }
-            ],
-            models: ['gemini-2.0-flash'],
-            imageBase64: image.buffer.toString('base64'),
-            mimeType: image.mimetype
-        });
+        const prompt = req.body?.prompt || 'Extract text and analyze the image.';
+        const imageBase64 = image.buffer.toString('base64');
 
-        return res.status(200).json({ success: true, text: sanitizeMarkdown(text) });
+        try {
+            const text = await aiService.callGeminiRestWithRetry({
+                messages: [
+                    { role: 'user', content: prompt }
+                ],
+                models: ['gemini-2.0-flash'],
+                imageBase64,
+                mimeType: image.mimetype
+            });
+
+            return res.status(200).json({ success: true, text: sanitizeMarkdown(text) });
+        } catch (geminiError) {
+            logger.warn('Gemini vision failed, switching to Puter fallback', {
+                error: geminiError.message,
+                status: geminiError?.response?.status
+            });
+
+            try {
+                const puterText = await aiService.callPuterVision({
+                    prompt,
+                    imageBase64,
+                    mimeType: image.mimetype,
+                    model: 'gpt-4o-mini'
+                });
+
+                return res.status(200).json({ success: true, text: sanitizeMarkdown(puterText) });
+            } catch (puterError) {
+                logger.warn('Puter vision fallback failed', { error: puterError.message });
+
+                return res.status(200).json({
+                    success: true,
+                    text: 'Vision analysis is temporarily unavailable because both Gemini and Puter are currently unavailable. Please retry shortly.'
+                });
+            }
+        }
     } catch (error) {
         if (error?.response?.status === 429 || String(error.message || '').includes('429')) {
             return res.status(200).json({

@@ -70,6 +70,40 @@ const callPuterChat = async ({ messages, model }) => {
     return normalizeReply(result);
 };
 
+const callPuterVision = async ({ prompt, imageBase64, mimeType, model = 'gpt-4o-mini' }) => {
+    const token = getActiveKey('puter');
+    if (!token) {
+        throw new Error('No active Puter token found.');
+    }
+
+    if (!imageBase64) {
+        throw new Error('Image input is required.');
+    }
+
+    const puter = init(token);
+    const dataUri = `data:${mimeType || 'image/png'};base64,${imageBase64}`;
+
+    try {
+        const result = await puter.ai.chat(prompt || 'Extract text and analyze the image.', dataUri, {
+            model,
+            temperature: 0.2,
+            vision: true
+        });
+
+        const normalized = normalizeReply(result);
+        if (normalized) {
+            return normalized;
+        }
+    } catch (error) {
+        logger.warn('Puter vision chat failed, trying img2txt fallback', { error: error.message });
+    }
+
+    return await puter.ai.img2txt(dataUri, {
+        model,
+        provider: 'puter'
+    });
+};
+
 const callGeminiRest = async ({ messages, model = 'gemini-2.0-flash', imageBase64, mimeType }) => {
     const apiKey = getActiveKey('gemini');
     if (!apiKey) {
@@ -306,6 +340,7 @@ module.exports = {
     buildSystemPrompt,
     callGeminiRest,
     callGeminiRestWithRetry,
+    callPuterVision,
     callGroqSearch,
     callPuterChat,
     DOWNLOAD_INDEX,
