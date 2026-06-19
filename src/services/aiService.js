@@ -7,7 +7,7 @@ const mammoth = require('mammoth');
 const { init } = require('@heyputer/puter.js/src/init.cjs');
 const logger = require('../utils/logger');
 const { uploadToCloudinary } = require('../utils/cloudinary');
-const { getActiveKey } = require('../config/aiConfig');
+const { getActiveKey, poolsCount } = require('../config/aiConfig');
 
 const DATA_DIR = path.join(process.cwd(), 'tmp', 'mahin-ai-assets');
 const DOWNLOAD_INDEX = new Map();
@@ -99,6 +99,35 @@ const callGeminiRest = async ({ messages, model = 'gemini-2.0-flash', imageBase6
     });
 
     return normalizeReply(response.data);
+};
+
+const callGeminiRestWithRetry = async ({ messages, models = ['gemini-2.0-flash'], imageBase64, mimeType }) => {
+    const modelList = Array.isArray(models) && models.length > 0 ? models : ['gemini-2.0-flash'];
+    const maxAttempts = Math.max(1, Number(poolsCount.gemini || 1) * modelList.length);
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const model = modelList[attempt % modelList.length];
+
+        try {
+            return await module.exports.callGeminiRest({ messages, model, imageBase64, mimeType });
+        } catch (error) {
+            const statusCode = error?.response?.status;
+            const retriable = statusCode === 429 || statusCode === 404;
+
+            logger.warn('Gemini vision retry failed', {
+                attempt: attempt + 1,
+                model,
+                error: error.message,
+                retriable
+            });
+
+            if (!retriable || attempt + 1 === maxAttempts) {
+                throw error;
+            }
+        }
+    }
+
+    throw new Error('Gemini vision retries exhausted.');
 };
 
 const callGroqSearch = async (query) => {
@@ -275,6 +304,7 @@ const streamChatReply = async ({ res, message, modelType, title, conversationId,
 module.exports = {
     buildSystemPrompt,
     callGeminiRest,
+    callGeminiRestWithRetry,
     callGroqSearch,
     callPuterChat,
     DOWNLOAD_INDEX,
