@@ -104,6 +104,7 @@ const callGeminiRest = async ({ messages, model = 'gemini-2.0-flash', imageBase6
 const callGeminiRestWithRetry = async ({ messages, models = ['gemini-2.0-flash'], imageBase64, mimeType }) => {
     const modelList = Array.isArray(models) && models.length > 0 ? models : ['gemini-2.0-flash'];
     const maxAttempts = Math.max(1, Number(poolsCount.gemini || 1) * modelList.length);
+    let lastError = null;
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         const model = modelList[attempt % modelList.length];
@@ -111,23 +112,23 @@ const callGeminiRestWithRetry = async ({ messages, models = ['gemini-2.0-flash']
         try {
             return await module.exports.callGeminiRest({ messages, model, imageBase64, mimeType });
         } catch (error) {
+            lastError = error;
             const statusCode = error?.response?.status;
             const retriable = statusCode === 429 || statusCode === 404;
 
-            logger.warn('Gemini vision retry failed', {
-                attempt: attempt + 1,
-                model,
-                error: error.message,
-                retriable
-            });
-
             if (!retriable || attempt + 1 === maxAttempts) {
+                logger.warn('Gemini vision retries exhausted', {
+                    attempts: attempt + 1,
+                    model,
+                    error: error.message,
+                    retriable
+                });
                 throw error;
             }
         }
     }
 
-    throw new Error('Gemini vision retries exhausted.');
+    throw lastError || new Error('Gemini vision retries exhausted.');
 };
 
 const callGroqSearch = async (query) => {

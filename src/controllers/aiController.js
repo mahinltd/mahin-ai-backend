@@ -191,6 +191,13 @@ const generateVisionResponse = async (req, res) => {
 
         return res.status(200).json({ success: true, text: sanitizeMarkdown(text) });
     } catch (error) {
+        if (error?.response?.status === 429 || String(error.message || '').includes('429')) {
+            return res.status(200).json({
+                success: true,
+                text: 'Vision analysis is temporarily unavailable because the Gemini pool is rate-limited. Please retry shortly.'
+            });
+        }
+
         logger.error('Vision/OCR error', { error: error.message });
         return res.status(500).json({ success: false, message: 'Vision processing failed.' });
     }
