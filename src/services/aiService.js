@@ -70,7 +70,7 @@ const callPuterChat = async ({ messages, model }) => {
     return normalizeReply(result);
 };
 
-const callGeminiRest = async ({ messages, model = 'gemini-1.5-flash', imageBase64, mimeType }) => {
+const callGeminiRest = async ({ messages, model = 'gemini-2.0-flash', imageBase64, mimeType }) => {
     const apiKey = getActiveKey('gemini');
     if (!apiKey) {
         throw new Error('No active Gemini key found.');
@@ -155,10 +155,10 @@ const generateReplyWithRotation = async ({ messages, preferredProviders, model, 
 
             if (provider === 'gemini') {
                 if (typeof providerOverrides.gemini === 'function') {
-                    return await providerOverrides.gemini({ messages, model: model || 'gemini-1.5-flash' });
+                    return await providerOverrides.gemini({ messages, model: model || 'gemini-2.0-flash' });
                 }
 
-                return await callGeminiRest({ messages, model: model || 'gemini-1.5-flash' });
+                return await callGeminiRest({ messages, model: model || 'gemini-2.0-flash' });
             }
 
             if (provider === 'groq') {
@@ -212,7 +212,20 @@ const generateImageAsset = async ({ prompt }) => {
     }
 
     if (!imageBuffer) {
-        imageBuffer = Buffer.from(`Mahin AI image placeholder: ${promptText}`, 'utf8');
+        const svg = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+                <defs>
+                    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#0f172a"/>
+                        <stop offset="100%" stop-color="#1d4ed8"/>
+                    </linearGradient>
+                </defs>
+                <rect width="1024" height="1024" fill="url(#g)"/>
+                <text x="64" y="120" fill="#ffffff" font-size="54" font-family="Arial, Helvetica, sans-serif">Mahin AI Image</text>
+                <text x="64" y="210" fill="#cbd5e1" font-size="32" font-family="Arial, Helvetica, sans-serif">${promptText.replace(/[<>&"]/g, '')}</text>
+            </svg>
+        `;
+        imageBuffer = Buffer.from(svg.trim(), 'utf8');
     }
 
     let uploaded;
@@ -223,8 +236,8 @@ const generateImageAsset = async ({ prompt }) => {
     }
 
     const asset = persistAsset(imageBuffer, {
-        extension: uploaded ? 'png' : 'txt',
-        contentType: uploaded ? 'image/png' : 'text/plain',
+        extension: uploaded ? 'png' : 'svg',
+        contentType: uploaded ? 'image/png' : 'image/svg+xml',
         dispositionName: 'generated-image'
     });
 

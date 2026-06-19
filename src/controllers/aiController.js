@@ -180,14 +180,13 @@ const generateVisionResponse = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Please upload an image file.' });
         }
 
-        const text = await aiService.generateReplyWithRotation({
+        const text = await aiService.callGeminiRest({
             messages: [
-                { role: 'system', content: aiService.buildSystemPrompt('Extract text from the attached image and analyze the document.') },
-                { role: 'user', content: req.body?.prompt || 'Analyze this image.' }
+                { role: 'user', content: req.body?.prompt || 'Extract text and analyze the image.' }
             ],
-            preferredProviders: ['gemini', 'puter'],
-            model: 'gemini-1.5-flash',
-            providerOverrides: req.app?.locals?.aiProviderOverrides || {}
+            model: 'gemini-2.0-flash',
+            imageBase64: image.buffer.toString('base64'),
+            mimeType: image.mimetype
         });
 
         return res.status(200).json({ success: true, text: sanitizeMarkdown(text) });
